@@ -2,6 +2,7 @@
 
 #include "GLFW/glfw3.h"
 
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <array>
@@ -12,6 +13,7 @@ constexpr size_t MAX_IMGUI_STRING_INPUT_SIZE = 512;
 std::array<char, MAX_IMGUI_STRING_INPUT_SIZE> baseDirectory = { "C:\\dev\\" };
 bool reloadDirectory = false;
 std::vector<std::filesystem::path> gitDirectories;
+std::string gitStatus;
 
 //--------------------------------------
 // render()
@@ -37,6 +39,10 @@ void render(GLFWwindow* window)
         for (const std::filesystem::path& gitDirectory : gitDirectories) {
             ImGui::Text(gitDirectory.string().c_str());
         }
+
+        ImGui::Spacing();
+
+        ImGui::Text(gitStatus.c_str());
 
         ImGui::End();
 
@@ -75,6 +81,20 @@ void poll()
         }
 
         gitDirectories.push_back(std::filesystem::path("Done!"));
+
+        static const std::string command("git status");
+        std::shared_ptr<FILE> pipe(_popen(command.c_str(), "r"), _pclose);
+
+        if (!pipe) {
+            std::cout << "PIPE FAILED" << std::endl;
+        }
+        else {
+            char buffer[128];
+            gitStatus.clear();
+            while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr) {
+                gitStatus += buffer;
+            }
+        }
 
         reloadDirectory = false;
     }
