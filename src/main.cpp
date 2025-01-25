@@ -85,7 +85,7 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
             status = "PULL";
         }
         else if (ahead > 0 && behind == 0) {
-            status = "REBASE";
+            status = "PUSH";
         }
         else {
             status = "DIVERGED";
@@ -233,4 +233,14 @@ int main()
     git_libgit2_shutdown();
 
     return EXIT_SUCCESS;
+}
+
+int WinMain(
+    HINSTANCE hInstance,
+    HINSTANCE hPrevInstance,
+    LPSTR     lpCmdLine,
+    int       nShowCmd
+)
+{
+    main();
 }
