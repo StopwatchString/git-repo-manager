@@ -9,73 +9,96 @@
 #include <array>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 
 constexpr size_t MAX_IMGUI_STRING_INPUT_SIZE = 512;
 
 std::array<char, MAX_IMGUI_STRING_INPUT_SIZE> baseDirectory = { "C:\\dev\\" };
 bool reloadDirectory = false;
-std::vector<std::filesystem::path> gitDirectories;
+std::vector<std::string> gitDirectories;
 std::mutex gitDirectoriesLock;
 std::string gitStatus;
 
-void check_git_status(const std::filesystem::path& repo_path) {
-    // Initialize libgit2
-    git_libgit2_init();
-
+std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
+    // Open Repo
     git_repository* repo = nullptr;
     int error = git_repository_open(&repo, repo_path.string().c_str());
-
     if (error != 0) {
         const git_error* e = git_error_last();
         std::cerr << "Error opening repository: " << (e && e->message ? e->message : "Unknown error") << std::endl;
-        git_libgit2_shutdown();
-        return;
+        return std::nullopt;
     }
 
-    std::cout << "Repository opened successfully: " << repo_path << std::endl;
-
-    // Get repository status
-    git_status_options status_opts;
-    git_status_options_init(&status_opts, GIT_STATUS_OPTIONS_VERSION);
-    status_opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR; // Show both index and working directory
-    status_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED; // Include untracked files
-
-    git_status_list* status_list = nullptr;
-    error = git_status_list_new(&status_list, repo, &status_opts);
-
+    // Get reference to repo head
+    git_reference* head_ref = nullptr;
+    error = git_repository_head(&head_ref, repo);
     if (error != 0) {
         const git_error* e = git_error_last();
-        std::cerr << "Error getting repository status: " << (e && e->message ? e->message : "Unknown error") << std::endl;
+        std::cerr << "Error retrieving HEAD: " << git_error_last()->message << std::endl;
         git_repository_free(repo);
-        git_libgit2_shutdown();
-        return;
+        return std::nullopt;
     }
 
-    size_t status_count = git_status_list_entrycount(status_list);
-    std::cout << "Number of status entries: " << status_count << std::endl;
-
-    for (size_t i = 0; i < status_count; ++i) {
-        const git_status_entry* entry = git_status_byindex(status_list, i);
-        if (!entry || !entry->head_to_index || !entry->head_to_index->old_file.path)
-            continue;
-
-        std::cout << "File: " << entry->head_to_index->old_file.path << " ";
-
-        if (entry->status & GIT_STATUS_INDEX_NEW) std::cout << "[Index New]";
-        if (entry->status & GIT_STATUS_INDEX_MODIFIED) std::cout << "[Index Modified]";
-        if (entry->status & GIT_STATUS_INDEX_DELETED) std::cout << "[Index Deleted]";
-        if (entry->status & GIT_STATUS_WT_NEW) std::cout << "[Working Tree New]";
-        if (entry->status & GIT_STATUS_WT_MODIFIED) std::cout << "[Working Tree Modified]";
-        if (entry->status & GIT_STATUS_WT_DELETED) std::cout << "[Working Tree Deleted]";
-        if (entry->status & GIT_STATUS_IGNORED) std::cout << "[Ignored]";
-
-        std::cout << std::endl;
+    // Get current branch name
+    const char* branch_name = nullptr;
+    git_branch_name(&branch_name, head_ref);
+    if (branch_name == nullptr) {
+        std::cerr << "Error determining branch name." << std::endl;
+        git_reference_free(head_ref);
+        git_repository_free(repo);
+        return std::nullopt;
     }
 
-    // Cleanup
-    git_status_list_free(status_list);
+    // Get upstream branch
+    git_reference* upstream_ref = nullptr;
+    error = git_branch_upstream(&upstream_ref, head_ref);
+    if (error != 0) {
+        if (error == GIT_ENOTFOUND) {
+            std::cout << "No upstream branch configured." << std::endl;
+        }
+        else {
+            std::cerr << "Error getting upstream branch: " << git_error_last()->message << std::endl;
+        }
+        git_reference_free(head_ref);
+        git_repository_free(repo);
+        return std::nullopt;
+    }
+
+    // Get upstream branch name
+    const char* upstream_branch_name = nullptr;
+    git_branch_name(&upstream_branch_name, upstream_ref);
+    std::cout << "Upstream branch: " << upstream_branch_name << std::endl;
+
+    // Compare local and upstream branches
+    const git_oid* local_oid = git_reference_target(head_ref);
+    const git_oid* upstream_oid = git_reference_target(upstream_ref);
+    size_t ahead = 0, behind = 0;
+    error = git_graph_ahead_behind(&ahead, &behind, repo, local_oid, upstream_oid);
+
+    // Get status string
+    std::string status;
+    if (error != 0) {
+        std::cerr << "Error calculating ahead/behind: " << git_error_last()->message << std::endl;
+    }
+    else {
+        if (ahead == 0 && behind == 0) {
+            status = "UP-TO-DATE";
+        }
+        else if (ahead == 0 && behind > 0) {
+            status = "PULL";
+        }
+        else if (ahead > 0 && behind == 0) {
+            status = "REBASE";
+        }
+        else {
+            status = "DIVERGED";
+        }
+    }
+
+    git_reference_free(upstream_ref);
+    git_reference_free(head_ref);
     git_repository_free(repo);
-    git_libgit2_shutdown();
+    return status;
 }
 
 //--------------------------------------
@@ -100,8 +123,8 @@ void render(GLFWwindow* window)
         ImGui::InputText("Base Directory", baseDirectory.data(), baseDirectory.size());
         reloadDirectory = ImGui::Button("Reload Directory");
         if (gitDirectoriesLock.try_lock()) {
-            for (const std::filesystem::path& gitDirectory : gitDirectories) {
-                ImGui::Text(gitDirectory.string().c_str());
+            for (const std::string& gitDirectory : gitDirectories) {
+                ImGui::Text(gitDirectory.c_str());
             }
             gitDirectoriesLock.unlock();
         }
@@ -139,8 +162,15 @@ void poll()
         try {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
                 if (entry.is_directory() && entry.path().filename() == ".git") {
-                    gitDirectories.push_back(entry.path());
-                    check_git_status(entry.path());
+                    std::optional<std::string> status = git_check(entry.path());
+                    if (status.has_value()) {
+                        std::string text;
+                        text += "[";
+                        text += status.value();
+                        text += "] ";
+                        text += entry.path().string();
+                        gitDirectories.push_back(text);
+                    }
                 }
             }
         }
@@ -155,6 +185,8 @@ void poll()
 //--------------------------------------
 int main()
 {
+    git_libgit2_init();
+
     OpenGLApplication::ApplicationConfig appConfig;
     appConfig.windowName = "GitRepoManager";
     appConfig.windowInitWidth = 2000;
@@ -184,6 +216,8 @@ int main()
         std::cout << e.what() << std::endl;
         return EXIT_FAILURE;
     }
+
+    git_libgit2_shutdown();
 
     return EXIT_SUCCESS;
 }
