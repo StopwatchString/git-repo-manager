@@ -62,7 +62,10 @@ project "GitRepoManager"
 
     links {
         "glfw3.lib",
-        "git2.lib"
+        "git2.lib", -- LibGit2
+        "Winhttp.lib", -- Windows HTTP lib for LibGit2
+        "Crypt32.lib", -- Windows Crypto lib for LibGit2
+        "Rpcrt4.lib" -- Windows Remote Procedure Call lib for LibGit2
     }
 
     -- Output directories for build files

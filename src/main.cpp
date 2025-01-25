@@ -18,6 +18,66 @@ std::vector<std::filesystem::path> gitDirectories;
 std::mutex gitDirectoriesLock;
 std::string gitStatus;
 
+void check_git_status(const std::filesystem::path& repo_path) {
+    // Initialize libgit2
+    git_libgit2_init();
+
+    git_repository* repo = nullptr;
+    int error = git_repository_open(&repo, repo_path.string().c_str());
+
+    if (error != 0) {
+        const git_error* e = git_error_last();
+        std::cerr << "Error opening repository: " << (e && e->message ? e->message : "Unknown error") << std::endl;
+        git_libgit2_shutdown();
+        return;
+    }
+
+    std::cout << "Repository opened successfully: " << repo_path << std::endl;
+
+    // Get repository status
+    git_status_options status_opts;
+    git_status_options_init(&status_opts, GIT_STATUS_OPTIONS_VERSION);
+    status_opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR; // Show both index and working directory
+    status_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED; // Include untracked files
+
+    git_status_list* status_list = nullptr;
+    error = git_status_list_new(&status_list, repo, &status_opts);
+
+    if (error != 0) {
+        const git_error* e = git_error_last();
+        std::cerr << "Error getting repository status: " << (e && e->message ? e->message : "Unknown error") << std::endl;
+        git_repository_free(repo);
+        git_libgit2_shutdown();
+        return;
+    }
+
+    size_t status_count = git_status_list_entrycount(status_list);
+    std::cout << "Number of status entries: " << status_count << std::endl;
+
+    for (size_t i = 0; i < status_count; ++i) {
+        const git_status_entry* entry = git_status_byindex(status_list, i);
+        if (!entry || !entry->head_to_index || !entry->head_to_index->old_file.path)
+            continue;
+
+        std::cout << "File: " << entry->head_to_index->old_file.path << " ";
+
+        if (entry->status & GIT_STATUS_INDEX_NEW) std::cout << "[Index New]";
+        if (entry->status & GIT_STATUS_INDEX_MODIFIED) std::cout << "[Index Modified]";
+        if (entry->status & GIT_STATUS_INDEX_DELETED) std::cout << "[Index Deleted]";
+        if (entry->status & GIT_STATUS_WT_NEW) std::cout << "[Working Tree New]";
+        if (entry->status & GIT_STATUS_WT_MODIFIED) std::cout << "[Working Tree Modified]";
+        if (entry->status & GIT_STATUS_WT_DELETED) std::cout << "[Working Tree Deleted]";
+        if (entry->status & GIT_STATUS_IGNORED) std::cout << "[Ignored]";
+
+        std::cout << std::endl;
+    }
+
+    // Cleanup
+    git_status_list_free(status_list);
+    git_repository_free(repo);
+    git_libgit2_shutdown();
+}
+
 //--------------------------------------
 // render()
 //--------------------------------------
@@ -80,16 +140,13 @@ void poll()
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
                 if (entry.is_directory() && entry.path().filename() == ".git") {
                     gitDirectories.push_back(entry.path());
+                    check_git_status(entry.path());
                 }
             }
         }
         catch (const std::filesystem::filesystem_error& e) {
             std::cerr << "Error accessing " << root << ": " << e.what() << std::endl;
         }
-
-        gitDirectories.push_back(std::filesystem::path("Done!"));
-
-        reloadDirectory = false;
     }
 }
 
