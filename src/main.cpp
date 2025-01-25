@@ -12,19 +12,35 @@
 #include <mutex>
 #include <optional>
 
+enum class GitState {
+    NONE,
+    UPTODATE,
+    PUSH,
+    PULL,
+    DIVERGED,
+    REBASE
+};
+
+struct GitRepo {
+    GitState state{ GitState::NONE };
+    git_repository* repo{ nullptr };
+    std::filesystem::path repoPath{ "" };
+};
+
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
-std::vector<std::string> gitDirectories;
+bool startup = true;
+std::vector<GitRepo> gitRepos;
 std::mutex gitDirectoriesLock;
 
-std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
+GitState git_check(const std::filesystem::path& repo_path) {
     // Open Repo
     git_repository* repo = nullptr;
     int error = git_repository_open(&repo, repo_path.string().c_str());
     if (error != 0) {
         const git_error* e = git_error_last();
         std::cerr << "Error opening repository: " << (e && e->message ? e->message : "Unknown error") << std::endl;
-        return std::nullopt;
+        return GitState::NONE;
     }
 
     // Get reference to repo head
@@ -34,7 +50,7 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
         const git_error* e = git_error_last();
         std::cerr << "Error retrieving HEAD: " << git_error_last()->message << std::endl;
         git_repository_free(repo);
-        return std::nullopt;
+        return GitState::NONE;
     }
 
     // Get current branch name
@@ -44,7 +60,7 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
         std::cerr << "Error determining branch name." << std::endl;
         git_reference_free(head_ref);
         git_repository_free(repo);
-        return std::nullopt;
+        return GitState::NONE;
     }
 
     // Get upstream branch
@@ -59,7 +75,7 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
         }
         git_reference_free(head_ref);
         git_repository_free(repo);
-        return std::nullopt;
+        return GitState::NONE;
     }
 
     // Get upstream branch name
@@ -72,30 +88,30 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
     size_t ahead = 0, behind = 0;
     error = git_graph_ahead_behind(&ahead, &behind, repo, local_oid, upstream_oid);
 
-    // Get status string
-    std::string status;
+    // Get repoState string
+    GitState state;
     if (error != 0) {
         std::cerr << "Error calculating ahead/behind: " << git_error_last()->message << std::endl;
     }
     else {
         if (ahead == 0 && behind == 0) {
-            status = "UP-TO-DATE";
+            state = GitState::UPTODATE;
         }
         else if (ahead == 0 && behind > 0) {
-            status = "PULL";
+            state = GitState::PULL;
         }
         else if (ahead > 0 && behind == 0) {
-            status = "PUSH";
+            state = GitState::PUSH;
         }
         else {
-            status = "DIVERGED";
+            state = GitState::DIVERGED;
         }
     }
 
     git_reference_free(upstream_ref);
     git_reference_free(head_ref);
     git_repository_free(repo);
-    return status;
+    return state;
 }
 
 //--------------------------------------
@@ -116,7 +132,9 @@ void render(GLFWwindow* window)
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::Begin("Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-
+        
+        reloadDirectory = ImGui::Button("Rescan");
+        ImGui::SameLine();
         if (ImGui::Button("Choose Folder")) {
             std::string result = OpenWindowsFolderDialogue();
             if (result.size() > 0) {
@@ -124,14 +142,13 @@ void render(GLFWwindow* window)
                 reloadDirectory = true;
             }
         }
-
         ImGui::SameLine();
         ImGui::Text(baseDirectory.c_str());
 
         if (gitDirectoriesLock.try_lock()) {
-            if (gitDirectories.size() > 0) {
-                for (const std::string& gitDirectory : gitDirectories) {
-                    ImGui::Text(gitDirectory.c_str());
+            if (gitRepos.size() > 0) {
+                for (const GitRepo& repo : gitRepos) {
+                    ImGui::Text(repo.repoPath.parent_path().string().c_str());
                 }
             }
             else {
@@ -140,7 +157,7 @@ void render(GLFWwindow* window)
             gitDirectoriesLock.unlock();
         }
         else {
-            ImGui::Text("Loading....");
+            ImGui::Text("Scanning....");
         }
 
         ImGui::End();
@@ -164,22 +181,21 @@ void render(GLFWwindow* window)
 //--------------------------------------
 void poll()
 {
-    if (reloadDirectory) {
+    if (reloadDirectory || startup) {
         std::lock_guard<std::mutex> lock(gitDirectoriesLock);
-        gitDirectories.clear();
+        gitRepos.clear();
 
         std::filesystem::path root = baseDirectory.data();
         try {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
                 if (entry.is_directory() && entry.path().filename() == ".git") {
-                    std::optional<std::string> status = git_check(entry.path());
-                    if (status.has_value()) {
-                        std::string text;
-                        text += "[";
-                        text += status.value();
-                        text += "] ";
-                        text += entry.path().string();
-                        gitDirectories.push_back(text);
+                    GitState repoState = git_check(entry.path());
+                    if (repoState != GitState::NONE) {
+                        GitRepo repo;
+                        repo.repo;
+                        repo.repoPath = entry.path();
+                        repo.state = repoState;
+                        gitRepos.push_back(repo);
                     }
                 }
             }
@@ -190,6 +206,8 @@ void poll()
 
         reloadDirectory = false;
     }
+
+    startup = false;
 }
 
 //--------------------------------------
