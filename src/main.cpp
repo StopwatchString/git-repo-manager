@@ -1,4 +1,5 @@
 #include "glh/classes/OpenGLApplication.h"
+#include "cpputils/windows/selectors.h"
 
 #include "GLFW/glfw3.h"
 #include "git2.h"
@@ -11,13 +12,10 @@
 #include <mutex>
 #include <optional>
 
-constexpr size_t MAX_IMGUI_STRING_INPUT_SIZE = 512;
-
-std::array<char, MAX_IMGUI_STRING_INPUT_SIZE> baseDirectory = { "C:\\dev\\" };
-bool reloadDirectory = false;
+std::string baseDirectory = "C:\\dev";
+bool reloadDirectory = true;
 std::vector<std::string> gitDirectories;
 std::mutex gitDirectoriesLock;
-std::string gitStatus;
 
 std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
     // Open Repo
@@ -67,7 +65,6 @@ std::optional<std::string> git_check(const std::filesystem::path& repo_path) {
     // Get upstream branch name
     const char* upstream_branch_name = nullptr;
     git_branch_name(&upstream_branch_name, upstream_ref);
-    std::cout << "Upstream branch: " << upstream_branch_name << std::endl;
 
     // Compare local and upstream branches
     const git_oid* local_oid = git_reference_target(head_ref);
@@ -120,18 +117,31 @@ void render(GLFWwindow* window)
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::Begin("Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
-        ImGui::InputText("Base Directory", baseDirectory.data(), baseDirectory.size());
-        reloadDirectory = ImGui::Button("Reload Directory");
+        if (ImGui::Button("Choose Folder")) {
+            std::string result = OpenWindowsFolderDialogue();
+            if (result.size() > 0) {
+                baseDirectory = std::move(result);
+                reloadDirectory = true;
+            }
+        }
+
+        ImGui::SameLine();
+        ImGui::Text(baseDirectory.c_str());
+
         if (gitDirectoriesLock.try_lock()) {
-            for (const std::string& gitDirectory : gitDirectories) {
-                ImGui::Text(gitDirectory.c_str());
+            if (gitDirectories.size() > 0) {
+                for (const std::string& gitDirectory : gitDirectories) {
+                    ImGui::Text(gitDirectory.c_str());
+                }
+            }
+            else {
+                ImGui::Text("No Git Directories found!");
             }
             gitDirectoriesLock.unlock();
         }
-
-        ImGui::Spacing();
-
-        ImGui::Text(gitStatus.c_str());
+        else {
+            ImGui::Text("Loading....");
+        }
 
         ImGui::End();
 
@@ -177,6 +187,8 @@ void poll()
         catch (const std::filesystem::filesystem_error& e) {
             std::cerr << "Error accessing " << root << ": " << e.what() << std::endl;
         }
+
+        reloadDirectory = false;
     }
 }
 
