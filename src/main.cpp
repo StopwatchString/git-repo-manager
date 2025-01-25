@@ -201,12 +201,12 @@ int main()
 
     OpenGLApplication::ApplicationConfig appConfig;
     appConfig.windowName = "GitRepoManager";
-    appConfig.windowInitWidth = 2000;
-    appConfig.windowInitHeight = 800;
+    appConfig.windowInitWidth = 1000;
+    appConfig.windowInitHeight = 600;
     appConfig.windowPosX = 100;
     appConfig.windowPosY = 100;
     appConfig.windowBorderless = false;
-    appConfig.windowResizeEnable = false;
+    appConfig.windowResizeEnable = true;
     appConfig.windowDarkmode = true;
     appConfig.windowRounded = true;
     appConfig.windowAlwaysOnTop = false;
