@@ -61,7 +61,8 @@ project "GitRepoManager"
     }
 
     links {
-        "glfw3.lib"
+        "glfw3.lib",
+        "git2.lib"
     }
 
     -- Output directories for build files

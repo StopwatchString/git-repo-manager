@@ -1,18 +1,21 @@
 #include "glh/classes/OpenGLApplication.h"
 
 #include "GLFW/glfw3.h"
+#include "git2.h"
 
 #include <cstdio>
 #include <iostream>
 #include <string>
 #include <array>
 #include <filesystem>
+#include <mutex>
 
 constexpr size_t MAX_IMGUI_STRING_INPUT_SIZE = 512;
 
 std::array<char, MAX_IMGUI_STRING_INPUT_SIZE> baseDirectory = { "C:\\dev\\" };
 bool reloadDirectory = false;
 std::vector<std::filesystem::path> gitDirectories;
+std::mutex gitDirectoriesLock;
 std::string gitStatus;
 
 //--------------------------------------
@@ -36,8 +39,11 @@ void render(GLFWwindow* window)
 
         ImGui::InputText("Base Directory", baseDirectory.data(), baseDirectory.size());
         reloadDirectory = ImGui::Button("Reload Directory");
-        for (const std::filesystem::path& gitDirectory : gitDirectories) {
-            ImGui::Text(gitDirectory.string().c_str());
+        if (gitDirectoriesLock.try_lock()) {
+            for (const std::filesystem::path& gitDirectory : gitDirectories) {
+                ImGui::Text(gitDirectory.string().c_str());
+            }
+            gitDirectoriesLock.unlock();
         }
 
         ImGui::Spacing();
@@ -66,6 +72,7 @@ void render(GLFWwindow* window)
 void poll()
 {
     if (reloadDirectory) {
+        std::lock_guard<std::mutex> lock(gitDirectoriesLock);
         gitDirectories.clear();
 
         std::filesystem::path root = baseDirectory.data();
@@ -81,20 +88,6 @@ void poll()
         }
 
         gitDirectories.push_back(std::filesystem::path("Done!"));
-
-        static const std::string command("git status");
-        std::shared_ptr<FILE> pipe(_popen(command.c_str(), "r"), _pclose);
-
-        if (!pipe) {
-            std::cout << "PIPE FAILED" << std::endl;
-        }
-        else {
-            char buffer[128];
-            gitStatus.clear();
-            while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr) {
-                gitStatus += buffer;
-            }
-        }
 
         reloadDirectory = false;
     }
