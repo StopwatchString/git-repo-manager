@@ -65,6 +65,16 @@ struct GitRepo {
     std::filesystem::path repoPath{ "" };
 };
 
+constexpr bool testReposOverride = false;
+const static std::array<GitRepo, 6> testRepos = {
+    GitRepo(GitState::NONE, nullptr, "C:\\testRepo1\\.git\\"),
+    GitRepo(GitState::UPTODATE, nullptr, "C:\\testRepo2\\.git\\"),
+    GitRepo(GitState::PUSH, nullptr, "C:\\testRepo3\\.git\\"),
+    GitRepo(GitState::PULL, nullptr, "C:\\testRepo4\\.git\\"),
+    GitRepo(GitState::DIVERGED, nullptr, "C:\\testRepo5\\.git\\"),
+    GitRepo(GitState::REBASE, nullptr, "C:\\testRepo6\\.git\\")
+};
+
 bool startup = true;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
@@ -200,12 +210,12 @@ void renderGitState(const GitState& state)
             break;
         }
         case GitState::PUSH: {
-            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            constexpr static ImVec4 color = { 0.77f, 0.459f, 0.09f, 1.0f };
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::PULL: {
-            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            constexpr static ImVec4 color = { 0.77f, 0.8f, 0.145f, 1.0f };
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
@@ -215,7 +225,7 @@ void renderGitState(const GitState& state)
             break;
         }
         case GitState::REBASE: {
-            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            constexpr static ImVec4 color = { 0.784, 0.22, 0.82, 1.0f };
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
@@ -314,19 +324,26 @@ void poll()
         }
         gitRepos.clear();
 
-        std::filesystem::path root = baseDirectory.data();
-        try {
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
-                if (entry.is_directory() && entry.path().filename() == ".git") {
-                    std::optional<GitRepo> repo = makeGitRepo(entry.path());
-                    if (repo.has_value()) {
-                        gitRepos.push_back(repo.value());
+        if (testReposOverride) {
+            for (const GitRepo& repo : testRepos) {
+                gitRepos.push_back(repo);
+            }
+        }
+        else {
+            std::filesystem::path root = baseDirectory.data();
+            try {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
+                    if (entry.is_directory() && entry.path().filename() == ".git") {
+                        std::optional<GitRepo> repo = makeGitRepo(entry.path());
+                        if (repo.has_value()) {
+                            gitRepos.push_back(repo.value());
+                        }
                     }
                 }
             }
-        }
-        catch (const std::filesystem::filesystem_error& e) {
-            std::cerr << "Error accessing " << root << ": " << e.what() << std::endl;
+            catch (const std::filesystem::filesystem_error& e) {
+                std::cerr << "Error accessing " << root << ": " << e.what() << std::endl;
+            }
         }
 
         reloadDirectory = false;
