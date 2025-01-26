@@ -120,13 +120,19 @@ void render(GLFWwindow* window)
                 for (GitRepo& repo : gitRepos) {
                     ImGui::PushID(id);
 
-                    if (ImGui::Button("Path")) {
-                        std::cout << repo.repoPath << std::endl;
+                    if (ImGui::Button("Pull")) {
+                        pullRepo(repo);
                     }
                     ImGui::SameLine();
+                    
                     renderGitState(repo.state);
                     ImGui::SameLine();
+                    
                     ImGui::Text(repo.repoPath.parent_path().string().c_str());
+
+                    if (repo.message.length() > 0) {
+                        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), repo.message.c_str());
+                    }
 
                     ImGui::PopID();
                     id++;

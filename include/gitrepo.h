@@ -171,4 +171,12 @@ std::optional<GitRepo> makeGitRepo(const std::filesystem::path& repoPath)
     return gitRepo;
 }
 
+//--------------------------------------
+// pullRepo()
+//--------------------------------------
+void pullRepo(GitRepo& gitRepo)
+{
+    gitRepo.message = "Pulled";
+}
+
 #endif
