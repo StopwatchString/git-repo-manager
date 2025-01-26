@@ -14,7 +14,7 @@
 #include <optional>
 #include <unordered_map>
 
-constexpr bool TEST_REPOS_OVERRIDE = false;
+constexpr bool TEST_REPOS_OVERRIDE = true;
 bool startup = true;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;

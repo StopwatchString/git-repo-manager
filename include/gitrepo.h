@@ -5,6 +5,9 @@
 
 #include <filesystem>
 #include <array>
+#include <mutex>
+#include <optional>
+#include <memory>
 
 //--------------------------------------
 // enum GitState
@@ -53,19 +56,42 @@ std::string GitStateToString(const GitState& state)
 // struct GitRepo
 //--------------------------------------
 struct GitRepo {
-    GitState state{ GitState::NONE };
     git_repository* repo{ nullptr };
     std::filesystem::path repoPath{ "" };
+    GitState state{ GitState::NONE };
     std::string message{ "" };
+    std::unique_ptr<std::mutex> processingMutex{ std::make_unique<std::mutex>() };
+
+    GitRepo() = default;
+
+    GitRepo(git_repository* repo, std::filesystem::path repoPath, GitState state, std::string message)
+        : repo(repo),
+          repoPath(repoPath),
+          state(state),
+          message(message),
+          processingMutex(std::make_unique<std::mutex>())
+    {
+    }
+
+    GitRepo(const GitRepo& other)
+        : repo(other.repo),
+          repoPath(other.repoPath),
+          state(other.state),
+          message(other.message),
+          processingMutex(std::make_unique<std::mutex>())
+    {
+    }
+
+    GitRepo(GitRepo&& other) = default;
 };
 
 const static std::array<GitRepo, 6> testRepos = {
-    GitRepo(GitState::NONE, nullptr, "C:\\testRepo1\\.git\\"),
-    GitRepo(GitState::UPTODATE, nullptr, "C:\\testRepo2\\.git\\"),
-    GitRepo(GitState::PUSH, nullptr, "C:\\testRepo3\\.git\\"),
-    GitRepo(GitState::PULL, nullptr, "C:\\testRepo4\\.git\\"),
-    GitRepo(GitState::DIVERGED, nullptr, "C:\\testRepo5\\.git\\"),
-    GitRepo(GitState::REBASE, nullptr, "C:\\testRepo6\\.git\\")
+    GitRepo(nullptr, "C:\\testRepo1\\.git\\", GitState::NONE, "test message 1"),
+    GitRepo(nullptr, "C:\\testRepo2\\.git\\", GitState::UPTODATE, "test message 2"),
+    GitRepo(nullptr, "C:\\testRepo3\\.git\\", GitState::PUSH, "test message 3"),
+    GitRepo(nullptr, "C:\\testRepo4\\.git\\", GitState::PULL, "test message 4 \n Is this on the next line?"),
+    GitRepo(nullptr, "C:\\testRepo5\\.git\\", GitState::DIVERGED, "test message 5"),
+    GitRepo(nullptr, "C:\\testRepo6\\.git\\", GitState::REBASE, "test message 6")
 };
 
 //--------------------------------------
