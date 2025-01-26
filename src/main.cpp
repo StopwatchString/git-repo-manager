@@ -11,7 +11,11 @@
 #include <filesystem>
 #include <mutex>
 #include <optional>
+#include <unordered_map>
 
+//--------------------------------------
+// enum GitState
+//--------------------------------------
 enum class GitState {
     NONE,
     UPTODATE,
@@ -21,35 +25,64 @@ enum class GitState {
     REBASE
 };
 
+//--------------------------------------
+// GitStateToString()
+//--------------------------------------
+std::string GitStateToString(const GitState& state)
+{
+    std::string stateStr;
+    switch (state) {
+    case GitState::NONE:
+        stateStr = "NONE";
+        break;
+    case GitState::UPTODATE:
+        stateStr = "UP-TO-DATE";
+        break;
+    case GitState::PUSH:
+        stateStr = "PUSH";
+        break;
+    case GitState::PULL:
+        stateStr = "PULL";
+        break;
+    case GitState::DIVERGED:
+        stateStr = "DIVERGED";
+        break;
+    case GitState::REBASE:
+        stateStr = "REBASE";
+        break;
+    default:
+        break;
+    }
+    return stateStr;
+}
+
+//--------------------------------------
+// struct GitRepo
+//--------------------------------------
 struct GitRepo {
     GitState state{ GitState::NONE };
     git_repository* repo{ nullptr };
     std::filesystem::path repoPath{ "" };
 };
 
+bool startup = true;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
-bool startup = true;
 std::vector<GitRepo> gitRepos;
 std::mutex gitDirectoriesLock;
+size_t gitStatusSize = 0;;
 
-GitState git_check(const std::filesystem::path& repo_path) {
-    // Open Repo
-    git_repository* repo = nullptr;
-    int error = git_repository_open(&repo, repo_path.string().c_str());
-    if (error != 0) {
-        const git_error* e = git_error_last();
-        std::cerr << "Error opening repository: " << (e && e->message ? e->message : "Unknown error") << std::endl;
-        return GitState::NONE;
-    }
-
+//--------------------------------------
+// getRepoState()
+//--------------------------------------
+GitState getRepoState(git_repository* repo)
+{
     // Get reference to repo head
     git_reference* head_ref = nullptr;
-    error = git_repository_head(&head_ref, repo);
+    int error = git_repository_head(&head_ref, repo);
     if (error != 0) {
         const git_error* e = git_error_last();
         std::cerr << "Error retrieving HEAD: " << git_error_last()->message << std::endl;
-        git_repository_free(repo);
         return GitState::NONE;
     }
 
@@ -59,7 +92,6 @@ GitState git_check(const std::filesystem::path& repo_path) {
     if (branch_name == nullptr) {
         std::cerr << "Error determining branch name." << std::endl;
         git_reference_free(head_ref);
-        git_repository_free(repo);
         return GitState::NONE;
     }
 
@@ -74,7 +106,6 @@ GitState git_check(const std::filesystem::path& repo_path) {
             std::cerr << "Error getting upstream branch: " << git_error_last()->message << std::endl;
         }
         git_reference_free(head_ref);
-        git_repository_free(repo);
         return GitState::NONE;
     }
 
@@ -88,8 +119,8 @@ GitState git_check(const std::filesystem::path& repo_path) {
     size_t ahead = 0, behind = 0;
     error = git_graph_ahead_behind(&ahead, &behind, repo, local_oid, upstream_oid);
 
-    // Get repoState string
-    GitState state;
+    // Determine repostate
+    GitState state = GitState::NONE;
     if (error != 0) {
         std::cerr << "Error calculating ahead/behind: " << git_error_last()->message << std::endl;
     }
@@ -110,8 +141,96 @@ GitState git_check(const std::filesystem::path& repo_path) {
 
     git_reference_free(upstream_ref);
     git_reference_free(head_ref);
-    git_repository_free(repo);
     return state;
+}
+
+//--------------------------------------
+// makeGitRepo()
+//--------------------------------------
+std::optional<GitRepo> makeGitRepo(const std::filesystem::path& repoPath)
+{
+    GitRepo gitRepo;
+
+    // Open Repo
+    gitRepo.repo = nullptr;
+    int error = git_repository_open(&gitRepo.repo, repoPath.string().c_str());
+    if (error != 0) {
+        const git_error* e = git_error_last();
+        std::cerr << "Error opening repository: " << (e && e->message ? e->message : "Unknown error") << std::endl;
+        return std::nullopt;
+    }
+
+    // Get repo state
+    std::optional<GitState> state = getRepoState(gitRepo.repo);
+    if (!state.has_value()) {
+        std::cerr << "Error getting repository state: " << repoPath << std::endl;
+        git_repository_free(gitRepo.repo);
+        return std::nullopt;
+    }
+    gitRepo.state = state.value();
+
+    // Set repo path
+    gitRepo.repoPath = repoPath;
+
+    return gitRepo;
+}
+
+//--------------------------------------
+// renderGitState()
+//--------------------------------------
+void renderGitState(const GitState& state)
+{
+    std::string stateStr = GitStateToString(state);
+
+    ImGui::Text("[");
+    ImGui::SameLine();
+
+    std::string displayStr = GitStateToString(state);
+    ImVec2 stateSize = ImGui::CalcTextSize(displayStr.c_str());
+
+    switch (state) {
+        case GitState::NONE: {
+            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        case GitState::UPTODATE: {
+            constexpr static ImVec4 color = { 0.21f, 0.77f, 0.1f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        case GitState::PUSH: {
+            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        case GitState::PULL: {
+            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        case GitState::DIVERGED: {
+            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        case GitState::REBASE: {
+            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
+        default:
+            break;
+    }
+
+    ImGui::SameLine();
+
+    ImGui::Text("]");
+
+    ImGui::SameLine();
+    ImGui::Dummy(ImVec2(gitStatusSize - stateSize.x, 0));
+    
+    
 }
 
 //--------------------------------------
@@ -133,6 +252,9 @@ void render(GLFWwindow* window)
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::Begin("Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
         
+        // Get max padding size for git status zone
+        gitStatusSize = ImGui::CalcTextSize("[UP-TO-DATE]").x;
+
         reloadDirectory = ImGui::Button("Rescan");
         ImGui::SameLine();
         if (ImGui::Button("Choose Folder")) {
@@ -148,6 +270,8 @@ void render(GLFWwindow* window)
         if (gitDirectoriesLock.try_lock()) {
             if (gitRepos.size() > 0) {
                 for (const GitRepo& repo : gitRepos) {
+                    renderGitState(repo.state);
+                    ImGui::SameLine();
                     ImGui::Text(repo.repoPath.parent_path().string().c_str());
                 }
             }
@@ -183,19 +307,20 @@ void poll()
 {
     if (reloadDirectory || startup) {
         std::lock_guard<std::mutex> lock(gitDirectoriesLock);
+        
+        // Clear exiting repo references
+        for (GitRepo& repo : gitRepos) {
+            git_repository_free(repo.repo);
+        }
         gitRepos.clear();
 
         std::filesystem::path root = baseDirectory.data();
         try {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
                 if (entry.is_directory() && entry.path().filename() == ".git") {
-                    GitState repoState = git_check(entry.path());
-                    if (repoState != GitState::NONE) {
-                        GitRepo repo;
-                        repo.repo;
-                        repo.repoPath = entry.path();
-                        repo.state = repoState;
-                        gitRepos.push_back(repo);
+                    std::optional<GitRepo> repo = makeGitRepo(entry.path());
+                    if (repo.has_value()) {
+                        gitRepos.push_back(repo.value());
                     }
                 }
             }
