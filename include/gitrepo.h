@@ -8,6 +8,7 @@
 #include <mutex>
 #include <optional>
 #include <memory>
+#include <thread>
 
 //--------------------------------------
 // enum GitState
@@ -18,7 +19,8 @@ enum class GitState {
     PUSH,
     PULL,
     DIVERGED,
-    REBASE
+    REBASE,
+    PROCESSING
 };
 
 //--------------------------------------
@@ -46,11 +48,24 @@ std::string GitStateToString(const GitState& state)
     case GitState::REBASE:
         stateStr = "REBASE";
         break;
+    case GitState::PROCESSING:
+        stateStr = "PROCESSING";
     default:
         break;
     }
     return stateStr;
 }
+
+//--------------------------------------
+// enum GitTask
+//--------------------------------------
+enum class GitTask {
+    NONE,
+    FETCH,
+    PULL,
+    PUSH,
+    PROCESSING,
+};
 
 //--------------------------------------
 // struct GitRepo
@@ -61,6 +76,7 @@ struct GitRepo {
     GitState state{ GitState::NONE };
     std::string message{ "" };
     std::unique_ptr<std::mutex> processingMutex{ std::make_unique<std::mutex>() };
+    GitTask task{ GitTask::NONE };
 
     GitRepo() = default;
 
@@ -68,8 +84,7 @@ struct GitRepo {
         : repo(repo),
           repoPath(repoPath),
           state(state),
-          message(message),
-          processingMutex(std::make_unique<std::mutex>())
+          message(message)
     {
     }
 
@@ -77,21 +92,21 @@ struct GitRepo {
         : repo(other.repo),
           repoPath(other.repoPath),
           state(other.state),
-          message(other.message),
-          processingMutex(std::make_unique<std::mutex>())
+          message(other.message)
     {
     }
 
     GitRepo(GitRepo&& other) = default;
 };
 
-const static std::array<GitRepo, 6> testRepos = {
+const static std::array<GitRepo, 7> testRepos = {
     GitRepo(nullptr, "C:\\testRepo1\\.git\\", GitState::NONE, "test message 1"),
     GitRepo(nullptr, "C:\\testRepo2\\.git\\", GitState::UPTODATE, "test message 2"),
     GitRepo(nullptr, "C:\\testRepo3\\.git\\", GitState::PUSH, "test message 3"),
     GitRepo(nullptr, "C:\\testRepo4\\.git\\", GitState::PULL, "test message 4 \n Is this on the next line?"),
     GitRepo(nullptr, "C:\\testRepo5\\.git\\", GitState::DIVERGED, "test message 5"),
-    GitRepo(nullptr, "C:\\testRepo6\\.git\\", GitState::REBASE, "test message 6")
+    GitRepo(nullptr, "C:\\testRepo6\\.git\\", GitState::REBASE, "test message 6"),
+    GitRepo(nullptr, "C:\\testRepo7\\.get\\", GitState::PROCESSING, "test message 7"),
 };
 
 //--------------------------------------
@@ -202,7 +217,10 @@ std::optional<GitRepo> makeGitRepo(const std::filesystem::path& repoPath)
 //--------------------------------------
 void pullRepo(GitRepo& gitRepo)
 {
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     gitRepo.message = "Pulled";
+    gitRepo.task = GitTask::NONE;
+    gitRepo.state = getRepoState(gitRepo.repo);
 }
 
 #endif

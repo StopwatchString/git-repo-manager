@@ -14,12 +14,12 @@
 #include <optional>
 #include <unordered_map>
 
-constexpr bool TEST_REPOS_OVERRIDE = true;
+constexpr bool TEST_REPOS_OVERRIDE = false;
 bool startup = true;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
 std::vector<GitRepo> gitRepos;
-std::mutex gitDirectoriesLock;
+std::mutex gitReposLock;
 size_t gitStatusSize = 0;
 
 //--------------------------------------
@@ -66,6 +66,11 @@ void renderGitState(const GitState& state)
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
+        case GitState::PROCESSING: {
+            constexpr static ImVec4 color = { 0.1f, 0.1f, 0.9f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
         default:
             break;
     }
@@ -102,6 +107,7 @@ void render(GLFWwindow* window)
         // Get max padding size for git status zone
         gitStatusSize = ImGui::CalcTextSize("[UP-TO-DATE]").x;
 
+        // Directory Selection bar
         reloadDirectory = ImGui::Button("Rescan");
         ImGui::SameLine();
         if (ImGui::Button("Choose Folder")) {
@@ -114,24 +120,44 @@ void render(GLFWwindow* window)
         ImGui::SameLine();
         ImGui::Text(baseDirectory.c_str());
 
-        if (gitDirectoriesLock.try_lock()) {
+        // Mass repo tools
+        ImGui::Text("All Repos: ");
+        ImGui::SameLine();
+        if (ImGui::Button("Pull")) {
+            if (gitReposLock.try_lock()) {
+
+                for (GitRepo& repo : gitRepos) {
+                    repo.task = GitTask::PULL;
+                }
+
+                gitReposLock.unlock();
+            }
+        }
+
+        // Git Repo list
+        if (gitReposLock.try_lock()) {
             if (gitRepos.size() > 0) {
                 uint16_t id = 0;
                 for (GitRepo& repo : gitRepos) {
                     ImGui::PushID(id);
 
-                    if (ImGui::Button("Pull")) {
-                        pullRepo(repo);
+                    if (ImGui::Button("Pull") && repo.task == GitTask::NONE) {
+                        repo.task = GitTask::PULL;
                     }
                     ImGui::SameLine();
                     
                     renderGitState(repo.state);
                     ImGui::SameLine();
-                    
+
                     ImGui::Text(repo.repoPath.parent_path().string().c_str());
 
-                    if (repo.message.length() > 0) {
-                        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), repo.message.c_str());
+                    if (ImGui::CollapsingHeader("Info")) {
+                        if (repo.task == GitTask::NONE) {
+                            ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), repo.message.c_str());
+                        }
+                        else {
+                            ImGui::TextColored(ImVec4(0.5f, 0.0f, 0.0f, 1.0f), "Task in progress");
+                        }
                     }
 
                     ImGui::PopID();
@@ -141,7 +167,7 @@ void render(GLFWwindow* window)
             else {
                 ImGui::Text("No Git Directories found!");
             }
-            gitDirectoriesLock.unlock();
+            gitReposLock.unlock();
         }
         else {
             ImGui::Text("Scanning....");
@@ -168,8 +194,21 @@ void render(GLFWwindow* window)
 //--------------------------------------
 void poll()
 {
+    for (GitRepo& repo : gitRepos) {
+        switch (repo.task) {
+        case GitTask::PULL:
+            std::thread t = std::thread([&]() 
+                {
+                    pullRepo(repo);
+                });
+            t.detach();
+            repo.state = GitState::PROCESSING;
+            repo.task = GitTask::PROCESSING;
+        }
+    }
+
     if (reloadDirectory || startup) {
-        std::lock_guard<std::mutex> lock(gitDirectoriesLock);
+        std::lock_guard<std::mutex> lock(gitReposLock);
         
         // Clear exiting repo references
         for (GitRepo& repo : gitRepos) {
