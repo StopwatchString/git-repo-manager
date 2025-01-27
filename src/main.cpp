@@ -4,6 +4,7 @@
 #include "GLFW/glfw3.h"
 #include "git2.h"
 #include "gitrepo.h"
+#include "cpputils/windows/credential_utils.h"
 
 #include <cstdio>
 #include <iostream>
@@ -15,12 +16,17 @@
 #include <unordered_map>
 
 constexpr bool TEST_REPOS_OVERRIDE = false;
-bool startup = true;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
 std::vector<GitRepo> gitRepos;
 std::mutex gitReposLock;
 size_t gitStatusSize = 0;
+
+// Credential Input
+std::array<char, 1000> usernameInput;
+std::array<char, 1000> credentialInput;
+bool credentialHasBeenInput = false;
+bool credentialResult = false;
 
 //--------------------------------------
 // renderGitState()
@@ -30,11 +36,11 @@ void renderGitState(const GitState& state)
     std::string stateStr = GitStateToString(state);
 
     ImGui::Text("[");
-    ImGui::SameLine();
 
     std::string displayStr = GitStateToString(state);
     ImVec2 stateSize = ImGui::CalcTextSize(displayStr.c_str());
 
+    ImGui::SameLine();
     switch (state) {
         case GitState::NONE: {
             constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
@@ -51,7 +57,7 @@ void renderGitState(const GitState& state)
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
-        case GitState::PULL: {
+        case GitState::FASTFORWARD: {
             constexpr static ImVec4 color = { 0.77f, 0.8f, 0.145f, 1.0f };
             ImGui::TextColored(color, displayStr.c_str());
             break;
@@ -71,18 +77,20 @@ void renderGitState(const GitState& state)
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
+        case GitState::ERROR_STATE: {
+            constexpr static ImVec4 color = { 1.0f, 0.1f, 0.1f, 1.0f };
+            ImGui::TextColored(color, displayStr.c_str());
+            break;
+        }
         default:
             break;
     }
 
     ImGui::SameLine();
-
     ImGui::Text("]");
 
     ImGui::SameLine();
     ImGui::Dummy(ImVec2(gitStatusSize - stateSize.x, 0));
-    
-    
 }
 
 //--------------------------------------
@@ -123,13 +131,37 @@ void render(GLFWwindow* window)
         // Mass repo tools
         ImGui::Text("All Repos: ");
         ImGui::SameLine();
-        if (ImGui::Button("Pull")) {
+        if (ImGui::Button("Fetch")) {
             if (gitReposLock.try_lock()) {
-
                 for (GitRepo& repo : gitRepos) {
-                    repo.task = GitTask::PULL;
+                    if (repo.task == GitTask::NONE) {
+                        repo.task = GitTask::FETCH;
+                    }
                 }
+                gitReposLock.unlock();
+            }
+        }
 
+        ImGui::SameLine();
+        if (ImGui::Button("Fast Forward")) {
+            if (gitReposLock.try_lock()) {
+                for (GitRepo& repo : gitRepos) {
+                    if (repo.task == GitTask::NONE) {
+                        repo.task = GitTask::FASTFORWARD;
+                    }
+                }
+                gitReposLock.unlock();
+            }
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Push")) {
+            if (gitReposLock.try_lock()) {
+                for (GitRepo& repo : gitRepos) {
+                    if (repo.task == GitTask::NONE) {
+                        repo.task = GitTask::PUSH;
+                    }
+                }
                 gitReposLock.unlock();
             }
         }
@@ -141,14 +173,24 @@ void render(GLFWwindow* window)
                 for (GitRepo& repo : gitRepos) {
                     ImGui::PushID(id);
 
-                    if (ImGui::Button("Pull") && repo.task == GitTask::NONE) {
-                        repo.task = GitTask::PULL;
+                    if (ImGui::Button("Fetch") && repo.task == GitTask::NONE) {
+                        repo.task = GitTask::FETCH;
                     }
-                    ImGui::SameLine();
-                    
-                    renderGitState(repo.state);
-                    ImGui::SameLine();
 
+                    ImGui::SameLine();
+                    if (ImGui::Button("Fast Forward") && repo.task == GitTask::NONE) {
+                        repo.task = GitTask::FASTFORWARD;
+                    }
+                    
+                    ImGui::SameLine();
+                    if (ImGui::Button("Push") && repo.task == GitTask::PUSH) {
+                        repo.task = GitTask::PUSH;
+                    }
+
+                    ImGui::SameLine();
+                    renderGitState(repo.state);
+
+                    ImGui::SameLine();
                     ImGui::Text(repo.repoPath.parent_path().string().c_str());
 
                     if (ImGui::CollapsingHeader("Info")) {
@@ -165,13 +207,40 @@ void render(GLFWwindow* window)
                 }
             }
             else {
-                ImGui::Text("No Git Directories found!");
+                ImGui::Text("No Git Directories loaded");
             }
             gitReposLock.unlock();
         }
         else {
             ImGui::Text("Scanning....");
         }
+
+        // Credential Input
+        ImGui::Spacing();
+        ImGui::Text("Credential Input");
+
+        ImGui::InputText("Username", usernameInput.data(), usernameInput.size());
+        
+        //ImGui::SameLine();
+        ImGui::InputText("Git Personal Access Token", credentialInput.data(), credentialInput.size());
+        
+        //ImGui::SameLine();
+        if (ImGui::Button("Submit")) {
+            Credential credential = { usernameInput.data(), credentialInput.data() };
+            credentialResult = writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
+            credentialHasBeenInput = true;
+        }
+
+        if (credentialHasBeenInput) {
+            ImGui::SameLine();
+            if (credentialResult) {
+                ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Saved Successfully");
+            }
+            else {
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error Saving Credential");
+            }
+        }
+
 
         ImGui::End();
 
@@ -180,7 +249,7 @@ void render(GLFWwindow* window)
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f); 
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -196,18 +265,39 @@ void poll()
 {
     for (GitRepo& repo : gitRepos) {
         switch (repo.task) {
-        case GitTask::PULL:
-            std::thread t = std::thread([&]() 
-                {
-                    pullRepo(repo);
-                });
-            t.detach();
-            repo.state = GitState::PROCESSING;
-            repo.task = GitTask::PROCESSING;
+            case GitTask::FETCH: {
+                repo.state = GitState::PROCESSING;
+                repo.task = GitTask::PROCESSING;
+                std::thread t = std::thread([&]()
+                    {
+                        fetchRepo(repo);
+                    });
+                t.detach();
+                break;
+            }
+            case GitTask::FASTFORWARD: {
+                repo.state = GitState::PROCESSING;
+                repo.task = GitTask::PROCESSING;
+                std::thread t = std::thread([&]() 
+                    {
+                        fastfowardRepo(repo);
+                    });
+                t.detach();
+                break;
+            }
+            case GitTask::PUSH: {
+                repo.state = GitState::PROCESSING;
+                repo.task = GitTask::PROCESSING;
+                std::thread t = std::thread([&]()
+                    {
+                        pushRepo(repo);
+                    });
+                t.detach();
+            }
         }
     }
 
-    if (reloadDirectory || startup) {
+    if (reloadDirectory) {
         std::lock_guard<std::mutex> lock(gitReposLock);
         
         // Clear exiting repo references
@@ -240,8 +330,6 @@ void poll()
 
         reloadDirectory = false;
     }
-
-    startup = false;
 }
 
 //--------------------------------------
