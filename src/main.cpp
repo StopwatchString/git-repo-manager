@@ -14,13 +14,14 @@
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <algorithm>
 
 constexpr bool TEST_REPOS_OVERRIDE = false;
 std::string baseDirectory = "C:\\dev";
 bool reloadDirectory = true;
 std::vector<GitRepo> gitRepos;
 std::mutex gitReposLock;
-size_t gitStatusSize = 0;
+float gitStatusSize = 0.0f;
 
 // Credential Input
 std::array<char, 1000> usernameInput;
@@ -68,7 +69,7 @@ void renderGitState(const GitState& state)
             break;
         }
         case GitState::REBASE: {
-            constexpr static ImVec4 color = { 0.784, 0.22, 0.82, 1.0f };
+            constexpr static ImVec4 color = { 0.784f, 0.22f, 0.82f, 1.0f };
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
@@ -229,18 +230,19 @@ void render(GLFWwindow* window)
             Credential credential = { usernameInput.data(), credentialInput.data() };
             credentialResult = writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
             credentialHasBeenInput = true;
+            std::fill(usernameInput.begin(), usernameInput.end(), 0);
+            std::fill(credentialInput.begin(), credentialInput.end(), 0);
         }
 
         if (credentialHasBeenInput) {
             ImGui::SameLine();
             if (credentialResult) {
-                ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Saved Successfully");
+                ImGui::TextColored(ImVec4(0.21f, 0.77f, 0.1f, 1.0f), "Saved Successfully");
             }
             else {
-                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Error Saving Credential");
+                ImGui::TextColored(ImVec4(1.0f, 0.1f, 0.1f, 1.0f), "Error Saving Credential");
             }
         }
-
 
         ImGui::End();
 

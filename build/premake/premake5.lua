@@ -68,6 +68,10 @@ project "GitRepoManager"
         "Rpcrt4.lib" -- Windows Remote Procedure Call lib for LibGit2
     }
 
+    linkoptions {
+        "/LTCG" -- MSIL .netmodule or module compiled with /GL found; restarting link with /LTCG; add /LTCG to the link command line to improve linker performance
+    }
+
     -- Output directories for build files
     targetdir "../../bin/%{cfg.buildcfg}"
     objdir "../../bin/%{cfg.buildcfg}"
