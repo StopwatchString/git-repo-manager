@@ -120,7 +120,7 @@ void render(GLFWwindow* window)
         reloadDirectory = ImGui::Button("Rescan");
         ImGui::SameLine();
         if (ImGui::Button("Choose Folder")) {
-            std::string result = OpenWindowsFolderDialogue();
+            std::string result = cpputils::windows::OpenWindowsFolderDialogue();
             if (result.size() > 0) {
                 baseDirectory = std::move(result);
                 reloadDirectory = true;
@@ -227,8 +227,8 @@ void render(GLFWwindow* window)
         
         //ImGui::SameLine();
         if (ImGui::Button("Submit")) {
-            Credential credential = { usernameInput.data(), credentialInput.data() };
-            credentialResult = writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
+            cpputils::windows::Credential credential = { usernameInput.data(), credentialInput.data() };
+            credentialResult = cpputils::windows::writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
             credentialHasBeenInput = true;
             std::fill(usernameInput.begin(), usernameInput.end(), 0);
             std::fill(credentialInput.begin(), credentialInput.end(), 0);

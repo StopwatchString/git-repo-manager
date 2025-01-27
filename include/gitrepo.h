@@ -123,7 +123,7 @@ const static std::array<GitRepo, 8> testRepos = {
 // credentialAcquireCallback()
 //--------------------------------------
 int credentialAcquireCallback(git_cred** out, const char* url, const char* username_from_url, unsigned int allowed_types, void* payload) {
-    Credential credential = readCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME);
+    cpputils::windows::Credential credential = cpputils::windows::readCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME);
     return git_cred_userpass_plaintext_new(out, credential.username.c_str(), credential.credentialBlob.c_str());
 }
 
