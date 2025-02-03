@@ -95,6 +95,151 @@ void renderGitState(const GitState& state)
 }
 
 //--------------------------------------
+// renderSelectionBar()
+//--------------------------------------
+void renderSelectionBar()
+{
+    reloadDirectory = ImGui::Button("Rescan");
+    ImGui::SameLine();
+    if (ImGui::Button("Choose Folder")) {
+        std::string result = cpputils::windows::OpenWindowsFolderDialogue();
+        if (result.size() > 0) {
+            baseDirectory = std::move(result);
+            reloadDirectory = true;
+        }
+    }
+    ImGui::SameLine();
+    ImGui::Text(baseDirectory.c_str());
+}
+
+//--------------------------------------
+// renderMassRepoToolbar()
+//--------------------------------------
+void renderMassRepoToolbar()
+{
+    ImGui::Text("All Repos: ");
+    ImGui::SameLine();
+    if (ImGui::Button("Fetch")) {
+        if (gitReposLock.try_lock()) {
+            for (GitRepo& repo : gitRepos) {
+                if (repo.task == GitTask::NONE) {
+                    repo.task = GitTask::FETCH;
+                }
+            }
+            gitReposLock.unlock();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Fast Forward")) {
+        if (gitReposLock.try_lock()) {
+            for (GitRepo& repo : gitRepos) {
+                if (repo.task == GitTask::NONE) {
+                    repo.task = GitTask::FASTFORWARD;
+                }
+            }
+            gitReposLock.unlock();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Push")) {
+        if (gitReposLock.try_lock()) {
+            for (GitRepo& repo : gitRepos) {
+                if (repo.task == GitTask::NONE) {
+                    repo.task = GitTask::PUSH;
+                }
+            }
+            gitReposLock.unlock();
+        }
+    }
+}
+
+//--------------------------------------
+// renderGitRepoList()
+//--------------------------------------
+void renderGitRepoList()
+{
+    // Git Repo list
+    if (gitReposLock.try_lock()) {
+        if (gitRepos.size() > 0) {
+            uint16_t id = 0;
+            for (GitRepo& repo : gitRepos) {
+                ImGui::PushID(id);
+
+                if (ImGui::Button("Fetch") && repo.task == GitTask::NONE) {
+                    repo.task = GitTask::FETCH;
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Fast Forward") && repo.task == GitTask::NONE) {
+                    repo.task = GitTask::FASTFORWARD;
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Push") && repo.task == GitTask::PUSH) {
+                    repo.task = GitTask::PUSH;
+                }
+
+                ImGui::SameLine();
+                renderGitState(repo.state);
+
+                ImGui::SameLine();
+                ImGui::Text(repo.repoPath.parent_path().string().c_str());
+
+                if (ImGui::CollapsingHeader("Info")) {
+                    if (repo.task == GitTask::NONE) {
+                        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), repo.message.c_str());
+                    }
+                    else {
+                        ImGui::TextColored(ImVec4(0.5f, 0.0f, 0.0f, 1.0f), "Task in progress");
+                    }
+                }
+
+                ImGui::PopID();
+                id++;
+            }
+        }
+        else {
+            ImGui::Text("No Git Directories loaded");
+        }
+        gitReposLock.unlock();
+    }
+    else {
+        ImGui::Text("Scanning....");
+    }
+}
+
+//--------------------------------------
+// renderCredentialInput()
+//--------------------------------------
+void renderCredentialInput()
+{
+    ImGui::Spacing();
+    ImGui::Text("Credential Input");
+
+    ImGui::InputText("Username", usernameInput.data(), usernameInput.size());
+
+    ImGui::InputText("Git Personal Access Token", credentialInput.data(), credentialInput.size());
+
+    if (ImGui::Button("Submit")) {
+        cpputils::windows::Credential credential = { usernameInput.data(), credentialInput.data() };
+        credentialResult = cpputils::windows::writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
+        credentialHasBeenInput = true;
+        std::fill(usernameInput.begin(), usernameInput.end(), 0);
+        std::fill(credentialInput.begin(), credentialInput.end(), 0);
+    }
+
+    if (credentialHasBeenInput) {
+        ImGui::SameLine();
+        if (credentialResult) {
+            ImGui::TextColored(ImVec4(0.21f, 0.77f, 0.1f, 1.0f), "Saved Successfully");
+        }
+        else {
+            ImGui::TextColored(ImVec4(1.0f, 0.1f, 0.1f, 1.0f), "Error Saving Credential");
+        }
+    }
+}
+
+//--------------------------------------
 // render()
 //--------------------------------------
 void render(GLFWwindow* window)
@@ -112,137 +257,13 @@ void render(GLFWwindow* window)
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::Begin("Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-        
-        // Get max padding size for git status zone
+
         gitStatusSize = ImGui::CalcTextSize("[UP-TO-DATE]").x;
 
-        // Directory Selection bar
-        reloadDirectory = ImGui::Button("Rescan");
-        ImGui::SameLine();
-        if (ImGui::Button("Choose Folder")) {
-            std::string result = cpputils::windows::OpenWindowsFolderDialogue();
-            if (result.size() > 0) {
-                baseDirectory = std::move(result);
-                reloadDirectory = true;
-            }
-        }
-        ImGui::SameLine();
-        ImGui::Text(baseDirectory.c_str());
-
-        // Mass repo tools
-        ImGui::Text("All Repos: ");
-        ImGui::SameLine();
-        if (ImGui::Button("Fetch")) {
-            if (gitReposLock.try_lock()) {
-                for (GitRepo& repo : gitRepos) {
-                    if (repo.task == GitTask::NONE) {
-                        repo.task = GitTask::FETCH;
-                    }
-                }
-                gitReposLock.unlock();
-            }
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Fast Forward")) {
-            if (gitReposLock.try_lock()) {
-                for (GitRepo& repo : gitRepos) {
-                    if (repo.task == GitTask::NONE) {
-                        repo.task = GitTask::FASTFORWARD;
-                    }
-                }
-                gitReposLock.unlock();
-            }
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Push")) {
-            if (gitReposLock.try_lock()) {
-                for (GitRepo& repo : gitRepos) {
-                    if (repo.task == GitTask::NONE) {
-                        repo.task = GitTask::PUSH;
-                    }
-                }
-                gitReposLock.unlock();
-            }
-        }
-
-        // Git Repo list
-        if (gitReposLock.try_lock()) {
-            if (gitRepos.size() > 0) {
-                uint16_t id = 0;
-                for (GitRepo& repo : gitRepos) {
-                    ImGui::PushID(id);
-
-                    if (ImGui::Button("Fetch") && repo.task == GitTask::NONE) {
-                        repo.task = GitTask::FETCH;
-                    }
-
-                    ImGui::SameLine();
-                    if (ImGui::Button("Fast Forward") && repo.task == GitTask::NONE) {
-                        repo.task = GitTask::FASTFORWARD;
-                    }
-                    
-                    ImGui::SameLine();
-                    if (ImGui::Button("Push") && repo.task == GitTask::PUSH) {
-                        repo.task = GitTask::PUSH;
-                    }
-
-                    ImGui::SameLine();
-                    renderGitState(repo.state);
-
-                    ImGui::SameLine();
-                    ImGui::Text(repo.repoPath.parent_path().string().c_str());
-
-                    if (ImGui::CollapsingHeader("Info")) {
-                        if (repo.task == GitTask::NONE) {
-                            ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), repo.message.c_str());
-                        }
-                        else {
-                            ImGui::TextColored(ImVec4(0.5f, 0.0f, 0.0f, 1.0f), "Task in progress");
-                        }
-                    }
-
-                    ImGui::PopID();
-                    id++;
-                }
-            }
-            else {
-                ImGui::Text("No Git Directories loaded");
-            }
-            gitReposLock.unlock();
-        }
-        else {
-            ImGui::Text("Scanning....");
-        }
-
-        // Credential Input
-        ImGui::Spacing();
-        ImGui::Text("Credential Input");
-
-        ImGui::InputText("Username", usernameInput.data(), usernameInput.size());
-        
-        //ImGui::SameLine();
-        ImGui::InputText("Git Personal Access Token", credentialInput.data(), credentialInput.size());
-        
-        //ImGui::SameLine();
-        if (ImGui::Button("Submit")) {
-            cpputils::windows::Credential credential = { usernameInput.data(), credentialInput.data() };
-            credentialResult = cpputils::windows::writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
-            credentialHasBeenInput = true;
-            std::fill(usernameInput.begin(), usernameInput.end(), 0);
-            std::fill(credentialInput.begin(), credentialInput.end(), 0);
-        }
-
-        if (credentialHasBeenInput) {
-            ImGui::SameLine();
-            if (credentialResult) {
-                ImGui::TextColored(ImVec4(0.21f, 0.77f, 0.1f, 1.0f), "Saved Successfully");
-            }
-            else {
-                ImGui::TextColored(ImVec4(1.0f, 0.1f, 0.1f, 1.0f), "Error Saving Credential");
-            }
-        }
+        renderSelectionBar();
+        renderMassRepoToolbar();
+        renderGitRepoList();
+        renderCredentialInput();
 
         ImGui::End();
 
