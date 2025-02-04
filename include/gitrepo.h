@@ -17,7 +17,8 @@ constexpr const char* GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME = "StopwatchString/
 //--------------------------------------
 // enum GitState
 //--------------------------------------
-enum class GitState {
+enum class GitState
+{
     NONE,
     UPTODATE,
     PUSH,
@@ -35,32 +36,32 @@ std::string GitStateToString(const GitState& state)
 {
     std::string stateStr;
     switch (state) {
-    case GitState::NONE:
-        stateStr = "NONE";
-        break;
-    case GitState::UPTODATE:
-        stateStr = "UP-TO-DATE";
-        break;
-    case GitState::PUSH:
-        stateStr = "PUSH";
-        break;
-    case GitState::FASTFORWARD:
-        stateStr = "FAST-FORWARD";
-        break;
-    case GitState::DIVERGED:
-        stateStr = "DIVERGED";
-        break;
-    case GitState::REBASE:
-        stateStr = "REBASE";
-        break;
-    case GitState::PROCESSING:
-        stateStr = "PROCESSING";
-        break;
-    case GitState::ERROR_STATE:
-        stateStr = "ERROR STATE";
-        break;
-    default:
-        break;
+        case GitState::NONE:
+            stateStr = "NONE";
+            break;
+        case GitState::UPTODATE:
+            stateStr = "UP-TO-DATE";
+            break;
+        case GitState::PUSH:
+            stateStr = "PUSH";
+            break;
+        case GitState::FASTFORWARD:
+            stateStr = "FAST-FORWARD";
+            break;
+        case GitState::DIVERGED:
+            stateStr = "DIVERGED";
+            break;
+        case GitState::REBASE:
+            stateStr = "REBASE";
+            break;
+        case GitState::PROCESSING:
+            stateStr = "PROCESSING";
+            break;
+        case GitState::ERROR_STATE:
+            stateStr = "ERROR STATE";
+            break;
+        default:
+            break;
     }
     return stateStr;
 }
@@ -68,7 +69,8 @@ std::string GitStateToString(const GitState& state)
 //--------------------------------------
 // enum GitTask
 //--------------------------------------
-enum class GitTask {
+enum class GitTask
+{
     NONE,
     FETCH,
     FASTFORWARD,
@@ -79,31 +81,24 @@ enum class GitTask {
 //--------------------------------------
 // struct GitRepo
 //--------------------------------------
-struct GitRepo {
-    git_repository* repo{ nullptr };
-    std::filesystem::path repoPath{ "" };
-    GitState state{ GitState::NONE };
-    std::string message{ "" };
-    std::unique_ptr<std::mutex> processingMutex{ std::make_unique<std::mutex>() };
-    GitTask task{ GitTask::NONE };
+struct GitRepo
+{
+    git_repository* repo{nullptr};
+    std::filesystem::path repoPath{""};
+    GitState state{GitState::NONE};
+    std::string message{""};
+    std::unique_ptr<std::mutex> processingMutex{std::make_unique<std::mutex>()};
+    GitTask task{GitTask::NONE};
 
     GitRepo() = default;
 
-    GitRepo(git_repository* repo, std::filesystem::path repoPath, GitState state, std::string message)
-        : repo(repo),
-          repoPath(repoPath),
-          state(state),
-          message(message)
-    {
-    }
+    GitRepo(git_repository* repo, std::filesystem::path repoPath, GitState state, std::string message) :
+        repo(repo), repoPath(repoPath), state(state), message(message)
+    {}
 
-    GitRepo(const GitRepo& other)
-        : repo(other.repo),
-          repoPath(other.repoPath),
-          state(other.state),
-          message(other.message)
-    {
-    }
+    GitRepo(const GitRepo& other) :
+        repo(other.repo), repoPath(other.repoPath), state(other.state), message(other.message)
+    {}
 
     GitRepo(GitRepo&& other) = default;
 };
@@ -122,8 +117,11 @@ const static std::array<GitRepo, 8> testRepos = {
 //--------------------------------------
 // credentialAcquireCallback()
 //--------------------------------------
-int credentialAcquireCallback(git_cred** out, const char* url, const char* username_from_url, unsigned int allowed_types, void* payload) {
-    cpputils::windows::Credential credential = cpputils::windows::readCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME);
+int credentialAcquireCallback(
+    git_cred** out, const char* url, const char* username_from_url, unsigned int allowed_types, void* payload)
+{
+    cpputils::windows::Credential credential
+        = cpputils::windows::readCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME);
     return git_cred_userpass_plaintext_new(out, credential.username.c_str(), credential.credentialBlob.c_str());
 }
 
@@ -368,7 +366,5 @@ void pushRepo(GitRepo& gitRepo)
     gitRepo.task = GitTask::NONE;
     gitRepo.state = getRepoState(gitRepo.repo);
 }
-
-
 
 #endif

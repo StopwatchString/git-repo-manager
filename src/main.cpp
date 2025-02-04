@@ -44,42 +44,42 @@ void renderGitState(const GitState& state)
     ImGui::SameLine();
     switch (state) {
         case GitState::NONE: {
-            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            constexpr static ImVec4 color = {1.0f, 0.0f, 0.0f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::UPTODATE: {
-            constexpr static ImVec4 color = { 0.21f, 0.77f, 0.1f, 1.0f };
+            constexpr static ImVec4 color = {0.21f, 0.77f, 0.1f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::PUSH: {
-            constexpr static ImVec4 color = { 0.77f, 0.459f, 0.09f, 1.0f };
+            constexpr static ImVec4 color = {0.77f, 0.459f, 0.09f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::FASTFORWARD: {
-            constexpr static ImVec4 color = { 0.77f, 0.8f, 0.145f, 1.0f };
+            constexpr static ImVec4 color = {0.77f, 0.8f, 0.145f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::DIVERGED: {
-            constexpr static ImVec4 color = { 1.0f, 0.0f, 0.0f, 1.0f };
+            constexpr static ImVec4 color = {1.0f, 0.0f, 0.0f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::REBASE: {
-            constexpr static ImVec4 color = { 0.784f, 0.22f, 0.82f, 1.0f };
+            constexpr static ImVec4 color = {0.784f, 0.22f, 0.82f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::PROCESSING: {
-            constexpr static ImVec4 color = { 0.1f, 0.1f, 0.9f, 1.0f };
+            constexpr static ImVec4 color = {0.1f, 0.1f, 0.9f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
         case GitState::ERROR_STATE: {
-            constexpr static ImVec4 color = { 1.0f, 0.1f, 0.1f, 1.0f };
+            constexpr static ImVec4 color = {1.0f, 0.1f, 0.1f, 1.0f};
             ImGui::TextColored(color, displayStr.c_str());
             break;
         }
@@ -221,7 +221,7 @@ void renderCredentialInput()
     ImGui::InputText("Git Personal Access Token", credentialInput.data(), credentialInput.size());
 
     if (ImGui::Button("Submit")) {
-        cpputils::windows::Credential credential = { usernameInput.data(), credentialInput.data() };
+        cpputils::windows::Credential credential = {usernameInput.data(), credentialInput.data()};
         credentialResult = cpputils::windows::writeCredential(GIT_REPO_MANAGER_CREDENTIAL_TARGE_NAME, credential);
         credentialHasBeenInput = true;
         std::fill(usernameInput.begin(), usernameInput.end(), 0);
@@ -247,7 +247,6 @@ void render(GLFWwindow* window)
     glfwMakeContextCurrent(window);
 
     while (!glfwWindowShouldClose(window)) {
-
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -256,7 +255,8 @@ void render(GLFWwindow* window)
         // Create window which fills viewport
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
-        ImGui::Begin("Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+        ImGui::Begin(
+            "Imgui Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 
         gitStatusSize = ImGui::CalcTextSize("[UP-TO-DATE]").x;
 
@@ -272,7 +272,7 @@ void render(GLFWwindow* window)
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f); 
+        glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -291,30 +291,21 @@ void poll()
             case GitTask::FETCH: {
                 repo.state = GitState::PROCESSING;
                 repo.task = GitTask::PROCESSING;
-                std::thread t = std::thread([&]()
-                    {
-                        fetchRepo(repo);
-                    });
+                std::thread t = std::thread([&]() { fetchRepo(repo); });
                 t.detach();
                 break;
             }
             case GitTask::FASTFORWARD: {
                 repo.state = GitState::PROCESSING;
                 repo.task = GitTask::PROCESSING;
-                std::thread t = std::thread([&]() 
-                    {
-                        fastfowardRepo(repo);
-                    });
+                std::thread t = std::thread([&]() { fastfowardRepo(repo); });
                 t.detach();
                 break;
             }
             case GitTask::PUSH: {
                 repo.state = GitState::PROCESSING;
                 repo.task = GitTask::PROCESSING;
-                std::thread t = std::thread([&]()
-                    {
-                        pushRepo(repo);
-                    });
+                std::thread t = std::thread([&]() { pushRepo(repo); });
                 t.detach();
             }
         }
@@ -322,7 +313,7 @@ void poll()
 
     if (reloadDirectory) {
         std::lock_guard<std::mutex> lock(gitReposLock);
-        
+
         // Clear exiting repo references
         for (GitRepo& repo : gitRepos) {
             git_repository_free(repo.repo);
@@ -337,7 +328,8 @@ void poll()
         else {
             std::filesystem::path root = baseDirectory.data();
             try {
-                for (const auto& entry : std::filesystem::recursive_directory_iterator(root, std::filesystem::directory_options::skip_permission_denied)) {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(
+                         root, std::filesystem::directory_options::skip_permission_denied)) {
                     if (entry.is_directory() && entry.path().filename() == ".git") {
                         std::optional<GitRepo> repo = makeGitRepo(entry.path());
                         if (repo.has_value()) {
@@ -377,13 +369,13 @@ int main()
     appConfig.transparentFramebuffer = false;
     appConfig.glVersionMajor = 4;
     appConfig.glVersionMinor = 6;
-    appConfig.glslVersionString = "#version 460"; // Used for DearImgui, leave default unless you know what to put here
+    appConfig.dearImguiGlslVersionString = "#version 460";
     appConfig.imguiIniFileName = nullptr;
-    appConfig.customDrawFunc = render;      // std::function<void(GLFWwindow*)>
-    appConfig.customKeyCallback = nullptr;   // std::function<void(GLFWwindow* window, int key, int scancode, int action, int mods)>
-    appConfig.customErrorCallback = nullptr; // std::function<void(int error_code, const char* description)>
-    appConfig.customDropCallback = nullptr;  // std::function<void(GLFWwindow* window, int count, const char** paths)>
-    appConfig.customPollingFunc = poll;   // std::function<void()>
+    appConfig.customDrawFunc = render;
+    appConfig.customKeyCallback = nullptr;
+    appConfig.customErrorCallback = nullptr;
+    appConfig.customDropCallback = nullptr;
+    appConfig.customPollingFunc = poll;
 
     try {
         OpenGLApplication application(appConfig);
@@ -398,12 +390,7 @@ int main()
     return EXIT_SUCCESS;
 }
 
-int WinMain(
-    HINSTANCE hInstance,
-    HINSTANCE hPrevInstance,
-    LPSTR     lpCmdLine,
-    int       nShowCmd
-)
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
     main();
 }
